@@ -1,0 +1,735 @@
+{
+  "name": "Founder's Weekly Operating System",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Founder's Weekly Operating System",
+        "formDescription": "Paste this week's raw inputs. In production these fields would be auto-filled from Slack, Gmail and Notion.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Meeting Notes",
+              "fieldType": "textarea",
+              "placeholder": "Paste notes from this week's meetings",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Customer Feedback",
+              "fieldType": "textarea",
+              "placeholder": "Paste customer feedback / support themes",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Slack & Emails",
+              "fieldType": "textarea",
+              "placeholder": "Paste relevant Slack messages and emails",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Current Task List",
+              "fieldType": "textarea",
+              "placeholder": "Paste your current open tasks",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "id-founder-inputs",
+      "name": "Founder Inputs",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        -220,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Here are the founder's raw weekly inputs.\n\nMEETING NOTES:\n{{ $json['Meeting Notes'] }}\n\nCUSTOMER FEEDBACK:\n{{ $json['Customer Feedback'] }}\n\nSLACK & EMAILS:\n{{ $json['Slack & Emails'] }}\n\nCURRENT TASK LIST:\n{{ $json['Current Task List'] }}",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "You are the INFORMATION COLLECTOR agent in a founder's weekly operating system. Your ONLY job is to read messy raw inputs (meeting notes, customer feedback, Slack/email messages, a task list) and extract clean STRUCTURED data. Do NOT prioritise, score, or give advice.\n\nOutput ONLY a single valid JSON object. No markdown, no code fences, no commentary. Use exactly this shape:\n{\n  \"tasks\": [{\"id\": \"T1\", \"description\": \"...\", \"source\": \"meeting|feedback|message|tasklist\", \"raw_signal\": \"any urgency/impact hints found in the text\"}],\n  \"feedback_items\": [{\"theme\": \"short label\", \"detail\": \"...\", \"source\": \"...\"}],\n  \"issues\": [{\"description\": \"a problem or blocker mentioned\", \"source\": \"...\"}]\n}\n\nRules: give each task a unique id (T1, T2, ...). Pull EVERY actionable task you can find. Record each recurring complaint as a SEPARATE feedback_item (even if similar) so they can be counted later. Return JSON only."
+            }
+          ]
+        }
+      },
+      "id": "id-agent-1---collector",
+      "name": "Agent 1 - Collector",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [
+        20,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "function parseJson(raw) {\n  if (raw == null) return null;\n  let s = String(raw).trim();\n  s = s.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();\n  const a = s.indexOf('{'), b = s.lastIndexOf('}');\n  if (a !== -1 && b !== -1) s = s.slice(a, b + 1);\n  try { return JSON.parse(s); } catch (e) { return null; }\n}\n\nconst raw = $json.text ?? $json.response ?? '';\nconst data = parseJson(raw);\n\nif (!data || !Array.isArray(data.tasks) || data.tasks.length === 0) {\n  return [{ json: { valid: false, error: 'Agent 1 returned no parseable tasks.', raw: String(raw).slice(0, 500) } }];\n}\n\nreturn [{ json: {\n  valid: true,\n  tasks: data.tasks,\n  feedback_items: Array.isArray(data.feedback_items) ? data.feedback_items : [],\n  issues: Array.isArray(data.issues) ? data.issues : []\n} }];\n"
+      },
+      "id": "id-parse-and-validate",
+      "name": "Parse & Validate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "cond-valid",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "id-valid-extraction",
+      "name": "Valid Extraction?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        500,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Tasks to rate:\n{{ JSON.stringify($json.tasks) }}",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "You are the PRIORITY agent. You receive a list of extracted tasks. For EACH task judge three dimensions on an INTEGER scale of 1-5 (5 = highest) and give a one-line rationale. Do NOT compute an overall score and do NOT sort - a deterministic system does that next.\n\nDimensions: urgency (time pressure), revenue_impact (effect on money/growth), customer_impact (effect on customers/retention).\n\nOutput ONLY valid JSON, no markdown:\n{ \"rated_tasks\": [{\"id\":\"T1\",\"description\":\"...\",\"urgency\":1,\"revenue_impact\":1,\"customer_impact\":1,\"rationale\":\"...\"}] }\nKeep the same ids you were given."
+            }
+          ]
+        }
+      },
+      "id": "id-agent-2---priority",
+      "name": "Agent 2 - Priority",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [
+        760,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "function parseJson(raw) {\n  if (raw == null) return null;\n  let s = String(raw).trim();\n  s = s.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();\n  const a = s.indexOf('{'), b = s.lastIndexOf('}');\n  if (a !== -1 && b !== -1) s = s.slice(a, b + 1);\n  try { return JSON.parse(s); } catch (e) { return null; }\n}\n\nconst data = parseJson($json.text) || {};\nconst tasks = Array.isArray(data.rated_tasks) ? data.rated_tasks\n            : (Array.isArray(data.tasks) ? data.tasks : []);\n\nconst W = { urgency: 0.40, revenue: 0.35, customer: 0.25 };\nconst clamp = (n) => Math.max(1, Math.min(5, Number(n) || 1));\n\nconst ranked = tasks.map(t => {\n  const u = clamp(t.urgency), r = clamp(t.revenue_impact), c = clamp(t.customer_impact);\n  const composite = +(W.urgency * u + W.revenue * r + W.customer * c).toFixed(2);\n  const score_100 = Math.round(composite * 20);\n  let bucket = 'Backlog';\n  if (composite >= 4) bucket = 'Critical';\n  else if (composite >= 2.8) bucket = 'Important';\n  return { id: t.id, description: t.description, urgency: u, revenue_impact: r,\n           customer_impact: c, rationale: t.rationale || '', composite, score_100, bucket };\n}).sort((a, b) => b.composite - a.composite);\n\nreturn [{ json: { ranked_tasks: ranked } }];\n"
+      },
+      "id": "id-score-and-rank",
+      "name": "Score & Rank",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Feedback:\n{{ JSON.stringify($json.feedback_items) }}\n\nIssues:\n{{ JSON.stringify($json.issues) }}\n\nTasks:\n{{ JSON.stringify($json.tasks) }}",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "You are the BOTTLENECK agent. You receive customer feedback items, issues, and tasks. Find recurring themes and systemic bottlenecks - problems that show up repeatedly or block growth. Cluster similar items together and COUNT how many times each theme appears across ALL inputs.\n\nOutput ONLY valid JSON, no markdown:\n{ \"bottlenecks\": [{\"theme\":\"short name\",\"frequency\":1,\"evidence\":\"why you grouped these\",\"impact\":\"what it blocks\"}] }\nfrequency must be an integer count of related mentions. Order by frequency, highest first."
+            }
+          ]
+        }
+      },
+      "id": "id-agent-3---bottleneck",
+      "name": "Agent 3 - Bottleneck",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [
+        760,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "function parseJson(raw) {\n  if (raw == null) return null;\n  let s = String(raw).trim();\n  s = s.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();\n  const a = s.indexOf('{'), b = s.lastIndexOf('}');\n  if (a !== -1 && b !== -1) s = s.slice(a, b + 1);\n  try { return JSON.parse(s); } catch (e) { return null; }\n}\n\nconst data = parseJson($json.text) || {};\nconst list = Array.isArray(data.bottlenecks) ? data.bottlenecks : [];\nconst THRESHOLD = 3;\n\nconst bottlenecks = list.map(b => {\n  const freq = Number(b.frequency) || 0;\n  return { theme: b.theme, frequency: freq, evidence: b.evidence || '',\n           impact: b.impact || '', systemic: freq >= THRESHOLD };\n}).sort((a, b) => b.frequency - a.frequency);\n\nreturn [{ json: { bottlenecks } }];\n"
+      },
+      "id": "id-flag-bottlenecks",
+      "name": "Flag Bottlenecks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 2,
+        "options": {}
+      },
+      "id": "id-merge-agent-outputs",
+      "name": "Merge Agent Outputs",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        1240,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\nconst items = $input.all();\nlet ranked_tasks = [], bottlenecks = [];\nfor (const it of items) {\n  if (Array.isArray(it.json.ranked_tasks)) ranked_tasks = it.json.ranked_tasks;\n  if (Array.isArray(it.json.bottlenecks)) bottlenecks = it.json.bottlenecks;\n}\nreturn [{ json: { ranked_tasks, bottlenecks } }];\n"
+      },
+      "id": "id-assemble-ceo-briefing",
+      "name": "Assemble CEO Briefing",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1480,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Ranked tasks:\n{{ JSON.stringify($json.ranked_tasks) }}\n\nBottlenecks:\n{{ JSON.stringify($json.bottlenecks) }}",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "You are the CEO agent. You receive a ranked list of tasks (already scored and bucketed by a deterministic system) and a list of identified bottlenecks. Synthesise a sharp weekly executive plan for a startup founder. Be decisive and specific.\n\nOutput ONLY valid JSON, no markdown:\n{\n  \"top_3_priorities\": [{\"title\":\"...\",\"why\":\"one line tying it to score/impact\"}],\n  \"biggest_risk\": \"the single biggest risk or bottleneck this week and why\",\n  \"quick_wins\": [\"high-leverage low-effort actions\"],\n  \"delegate\": [\"tasks the founder should hand off, with who/what\"],\n  \"summary\": \"2-3 sentence strategic read of the week\"\n}\n\nBase top_3_priorities on the highest-scored tasks. Base biggest_risk on the most systemic bottleneck."
+            }
+          ]
+        }
+      },
+      "id": "id-agent-4---ceo",
+      "name": "Agent 4 - CEO",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [
+        1720,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "function parseJson(raw) {\n  if (raw == null) return null;\n  let s = String(raw).trim();\n  s = s.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();\n  const a = s.indexOf('{'), b = s.lastIndexOf('}');\n  if (a !== -1 && b !== -1) s = s.slice(a, b + 1);\n  try { return JSON.parse(s); } catch (e) { return null; }\n}\n\nconst plan = parseJson($json.text) || {};\nconst top = Array.isArray(plan.top_3_priorities) ? plan.top_3_priorities : [];\nconst quick = Array.isArray(plan.quick_wins) ? plan.quick_wins : [];\nconst deleg = Array.isArray(plan.delegate) ? plan.delegate : [];\nconst risk = plan.biggest_risk || '';\nconst plan_valid = top.length > 0 && String(risk).length > 0;\n\nconst line = (x, i) => `${i + 1}. ` + (typeof x === 'string'\n  ? x\n  : (x.title ? `${x.title}${x.why ? ' - ' + x.why : ''}` : JSON.stringify(x)));\n\nconst summary = [\n  'TOP 3 PRIORITIES:', top.map(line).join('\\n') || '(none)', '',\n  'BIGGEST RISK:', risk || '(none)', '',\n  'QUICK WINS:', quick.map(line).join('\\n') || '(none)', '',\n  'DELEGATE:', deleg.map(line).join('\\n') || '(none)', '',\n  'SUMMARY:', plan.summary || '(none)'\n].join('\\n');\n\nreturn [{ json: { plan_valid, plan, plan_summary: summary } }];\n"
+      },
+      "id": "id-validate-plan",
+      "name": "Validate Plan",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1960,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "resume": "form",
+        "formTitle": "Approve this week's plan?",
+        "formDescription": "={{ $json.plan_summary }}",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Decision",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Approve"
+                  },
+                  {
+                    "option": "Reject"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Comments",
+              "fieldType": "textarea",
+              "requiredField": false
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "id-wait-for-founder-approval",
+      "name": "Wait for Founder Approval",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2200,
+        380
+      ],
+      "webhookId": "founder-approval-webhook-01"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "cond-approved",
+              "leftValue": "={{ $json.Decision }}",
+              "rightValue": "Approve",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "id-approved",
+      "name": "Approved?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2440,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a-status",
+              "name": "status",
+              "value": "APPROVED",
+              "type": "string"
+            },
+            {
+              "id": "a-time",
+              "name": "approved_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "a-comments",
+              "name": "founder_comments",
+              "value": "={{ $json.Comments }}",
+              "type": "string"
+            },
+            {
+              "id": "a-plan",
+              "name": "plan",
+              "value": "={{ $('Validate Plan').first().json.plan }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "id-approved-plan",
+      "name": "Approved Plan",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2680,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "r-status",
+              "name": "status",
+              "value": "REJECTED",
+              "type": "string"
+            },
+            {
+              "id": "r-comments",
+              "name": "founder_comments",
+              "value": "={{ $json.Comments }}",
+              "type": "string"
+            },
+            {
+              "id": "r-note",
+              "name": "note",
+              "value": "Plan rejected by founder. Adjust inputs and re-run.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "id-rejected",
+      "name": "Rejected",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2680,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f-status",
+              "name": "status",
+              "value": "INPUT_ERROR",
+              "type": "string"
+            },
+            {
+              "id": "f-msg",
+              "name": "message",
+              "value": "Could not extract structured tasks from the inputs. Please add clearer meeting notes / task list and re-run.",
+              "type": "string"
+            },
+            {
+              "id": "f-raw",
+              "name": "details",
+              "value": "={{ $json.error }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "id-fallback---bad-input",
+      "name": "Fallback - Bad Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        760,
+        760
+      ]
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.0-flash",
+        "options": {}
+      },
+      "id": "id-gemini-chat-model",
+      "name": "Gemini Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        760,
+        940
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 1) INPUT (deterministic)\nForm Trigger collects the founder's raw week.\n\n*This is where Slack / Gmail / Notion nodes would plug in for real data.*",
+        "height": 220,
+        "width": 300,
+        "color": 6
+      },
+      "id": "sticky-note-input",
+      "name": "note-input",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -260,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 2) Agent 1 + validation\n**AI** extracts structured tasks/feedback/issues.\n**Deterministic** Code node parses the JSON and routes bad input to a fallback.",
+        "height": 220,
+        "width": 320,
+        "color": 4
+      },
+      "id": "sticky-note-collect",
+      "name": "note-collect",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        220,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 3) Two agents in parallel\n**Agent 2 (Priority)** rates each task 1-5.\n**Agent 3 (Bottleneck)** clusters recurring issues.\nDeterministic Code nodes do the scoring math + threshold flags, then Merge combines both.",
+        "height": 230,
+        "width": 540,
+        "color": 5
+      },
+      "id": "sticky-note-parallel",
+      "name": "note-parallel",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        700,
+        -60
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 4) Agent 4 (CEO) + gate\n**AI** synthesises the executive plan.\n**Deterministic** validation, then a **human-in-the-loop** approval form before anything is finalised.",
+        "height": 200,
+        "width": 380,
+        "color": 3
+      },
+      "id": "sticky-note-ceo",
+      "name": "note-ceo",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1700,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Shared LLM\nOne Google Gemini model powers all four agents (free tier).",
+        "height": 150,
+        "width": 300,
+        "color": 7
+      },
+      "id": "sticky-note-llm",
+      "name": "note-llm",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        700,
+        900
+      ]
+    }
+  ],
+  "connections": {
+    "Founder Inputs": {
+      "main": [
+        [
+          {
+            "node": "Agent 1 - Collector",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent 1 - Collector": {
+      "main": [
+        [
+          {
+            "node": "Parse & Validate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse & Validate": {
+      "main": [
+        [
+          {
+            "node": "Valid Extraction?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid Extraction?": {
+      "main": [
+        [
+          {
+            "node": "Agent 2 - Priority",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Agent 3 - Bottleneck",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fallback - Bad Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent 2 - Priority": {
+      "main": [
+        [
+          {
+            "node": "Score & Rank",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score & Rank": {
+      "main": [
+        [
+          {
+            "node": "Merge Agent Outputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent 3 - Bottleneck": {
+      "main": [
+        [
+          {
+            "node": "Flag Bottlenecks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flag Bottlenecks": {
+      "main": [
+        [
+          {
+            "node": "Merge Agent Outputs",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Agent Outputs": {
+      "main": [
+        [
+          {
+            "node": "Assemble CEO Briefing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assemble CEO Briefing": {
+      "main": [
+        [
+          {
+            "node": "Agent 4 - CEO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent 4 - CEO": {
+      "main": [
+        [
+          {
+            "node": "Validate Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Plan": {
+      "main": [
+        [
+          {
+            "node": "Wait for Founder Approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Founder Approval": {
+      "main": [
+        [
+          {
+            "node": "Approved?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approved?": {
+      "main": [
+        [
+          {
+            "node": "Approved Plan",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Rejected",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent 1 - Collector",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Agent 2 - Priority",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Agent 3 - Bottleneck",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Agent 4 - CEO",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

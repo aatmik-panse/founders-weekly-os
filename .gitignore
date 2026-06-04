@@ -1,0 +1,43 @@
+# ── Secrets / environment ─────────────────────────────
+.env
+.env.local
+.env.*.local
+*.key
+
+# ── Local-only prep (kept on disk, not committed) ─────
+VIDEO_SCRIPT.md
+
+# ── OS noise ──────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+desktop.ini
+
+# ── Claude / agent tooling ────────────────────────────
+.claude/
+
+# ── n8n local data (if self-hosting) ──────────────────
+.n8n/
+n8n-data/
+database.sqlite
+
+# ── Node (if running n8n via npx/npm locally) ─────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ── Editor / IDE ──────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*~
+
+# ── Logs / temp ───────────────────────────────────────
+*.log
+tmp/
+.cache/
+
+# NOTE: screenshots/ is intentionally NOT ignored — commit your demo screenshots.

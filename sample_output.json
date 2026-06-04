@@ -1,0 +1,33 @@
+{
+  "_note": "Representative FINAL output after the founder clicks 'Approve'. Exact wording will vary per LLM run; structure and logic are deterministic.",
+  "status": "APPROVED",
+  "approved_at": "2026-06-04T10:32:11.000Z",
+  "founder_comments": "Agree — let's go.",
+  "plan": {
+    "top_3_priorities": [
+      {
+        "title": "Fix Stripe webhook failures in production",
+        "why": "Highest composite score (4.6/5) — 3-day prod outage, blocks revenue and erodes trust."
+      },
+      {
+        "title": "Ship SSO for enterprise",
+        "why": "Unblocks the Acme Corp 40k/yr deal (high revenue_impact); they will not sign without it."
+      },
+      {
+        "title": "Rewrite the onboarding / setup flow",
+        "why": "Most systemic bottleneck (6 related complaints) — driving trial churn."
+      }
+    ],
+    "biggest_risk": "Onboarding confusion is a systemic bottleneck appearing 6 times this week and is causing trial churn before users reach value. Left unfixed, paid conversion keeps leaking.",
+    "quick_wins": [
+      "Reply to Acme procurement today with an SSO timeline to keep the deal warm.",
+      "Send the investor update before Friday (deck is the only blocker).",
+      "Clarify the pricing page copy — low effort, reduces a repeated point of confusion."
+    ],
+    "delegate": [
+      "Hand the second-support-person hiring to ops/recruiting.",
+      "Delegate first-draft of the investor deck to a co-founder; founder only reviews."
+    ],
+    "summary": "This week is about stopping two leaks (the prod webhook outage and onboarding churn) while protecting one big upside (the Acme deal via SSO). Capacity is tight with two engineers out, so the founder should focus eng on webhooks + SSO and delegate everything non-critical."
+  }
+}
